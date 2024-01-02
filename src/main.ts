@@ -1,4 +1,5 @@
 import { ErrorMapper } from "utils/ErrorMapper";
+import Tasks from 'creep-tasks';
 
 declare global {
   /*
@@ -30,14 +31,66 @@ declare global {
 }
 
 // When compiling TS to JS and bundling with rollup, the line numbers and file names in error messages change
+function aroundOf(current: RoomPosition) {
+  return [
+    new RoomPosition(current.x - 1, current.y + 1, current.roomName),
+    new RoomPosition(current.x, current.y + 1, current.roomName),
+    new RoomPosition(current.x + 1, current.y + 1, current.roomName),
+    new RoomPosition(current.x - 1, current.y, current.roomName),
+    //new RoomPosition(current.x, current.y, current.roomName),
+    new RoomPosition(current.x + 1, current.y, current.roomName),
+    new RoomPosition(current.x - 1, current.y - 1, current.roomName),
+    new RoomPosition(current.x, current.y - 1, current.roomName),
+    new RoomPosition(current.x + 1, current.y - 1, current.roomName),
+  ]
+}
+
+const TERRAIN_MASK_PLAIN = 0;
+
+function PlainTerrainPredicate(room: Room) {
+  let terrain = new Room.Terrain(room.name);
+  return function (pos: RoomPosition) {
+    return terrain.get(pos.x, pos.y) === TERRAIN_MASK_PLAIN;
+  }
+}
+
 // This utility uses source maps to get the line numbers and file names of the original, TS source code
 export const loop = ErrorMapper.wrapLoop(() => {
-  console.log(`Current game tick is ${Game.time}`);
-
   // Automatically delete memory of missing creeps
   for (const name in Memory.creeps) {
     if (!(name in Game.creeps)) {
       delete Memory.creeps[name];
+    }
+  }
+
+  console.log("New game tick");
+
+  // TODO only do this if no other actions // Store in memory
+  for (let spawnName in Game.spawns) {
+    let spawn = Game.spawns[spawnName];
+    let room = spawn.room;
+    let sources = room.find(FIND_SOURCES);
+    sources.forEach(source => {
+      let emptySpots = _.filter(aroundOf(source.pos), PlainTerrainPredicate(room));
+      // Can have more harvester
+      let currentHarvesterCount = source.targetedBy && source.targetedBy.length || 0;
+      console.log(currentHarvesterCount);
+      if (currentHarvesterCount < emptySpots.length) {
+        // TODO should handle bigger creep if possible
+        //spawn.spawnCreep([WORK, CARRY, MOVE], "harvester-" + source.id + "-" + currentHarvesterCount);
+        // TODO remember spawn creep names & wait for it to spawn to assign task
+      }
+    });
+
+    for (let creepsName in Game.creeps) {
+      let creep = Game.creeps[creepsName];
+
+      if (creep.isIdle) {
+        // TODO use spawnCreep initial memory to assign a job
+        creep.task = Tasks.harvest(creep.room.find(FIND_SOURCES)[0]);
+      }
+
+      creep.run();
     }
   }
 });
